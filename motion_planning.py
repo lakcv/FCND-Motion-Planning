@@ -5,12 +5,16 @@ from enum import Enum, auto
 
 import numpy as np
 
-from planning_utils import a_star, heuristic, create_grid
+from planning_utils import a_star, heuristic, create_grid ,getClosestAllowedPoint ,prune_path
 from udacidrone import Drone
 from udacidrone.connection import MavlinkConnection
 from udacidrone.messaging import MsgID
 from udacidrone.frame_utils import global_to_local
+from graph_utils import create_grid_and_edges , a_star_graph, find_start_goal_in_graph
 
+import re
+import networkx as nx
+import numpy.linalg as LA
 
 class States(Enum):
     MANUAL = auto()
@@ -45,7 +49,7 @@ class MotionPlanning(Drone):
             if -1.0 * self.local_position[2] > 0.95 * self.target_position[2]:
                 self.waypoint_transition()
         elif self.flight_state == States.WAYPOINT:
-            if np.linalg.norm(self.target_position[0:2] - self.local_position[0:2]) < 1.0:
+            if np.linalg.norm(self.target_position[0:2] - self.local_position[0:2]) < 5.0:
                 if len(self.waypoints) > 0:
                     self.waypoint_transition()
                 else:
@@ -108,6 +112,7 @@ class MotionPlanning(Drone):
 
     def send_waypoints(self):
         print("Sending waypoints to simulator ...")
+        print(self.waypoints)
         data = msgpack.dumps(self.waypoints)
         self.connection._master.write(data)
 
@@ -120,35 +125,71 @@ class MotionPlanning(Drone):
         self.target_position[2] = TARGET_ALTITUDE
 
         # TODO: read lat0, lon0 from colliders into floating point values
+        with open('colliders.csv') as f:
+            first_line = f.readline()
+        [lat0 , lon0] = [np.float(s) for s in re.findall(r"\s[-+]?(?:\d*\.*\d+)",first_line)]
         
         # TODO: set home position to (lon0, lat0, 0)
-
+        self.set_home_position(lon0, lat0,0)
+        
         # TODO: retrieve current global position
+        global_position = np.array([self._longitude, self._latitude, self._altitude])
  
         # TODO: convert to current local position using global_to_local()
+        local_position = global_to_local(global_position,self.global_home)
+
+        print('local_position is ',local_position)
         
         print('global home {0}, position {1}, local position {2}'.format(self.global_home, self.global_position,
                                                                          self.local_position))
         # Read in obstacle map
         data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
-        
+
+        # I'll use a graph method
+        grid, edges = create_grid_and_edges(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+
+        # Create a graph with the weight of the edges
+        # set to the Euclidean distance between the points
+        w_edges = [(p1, p2, LA.norm(np.array(p2) - np.array(p1))) for p1, p2 in edges]
+        G = nx.Graph()
+        G.add_weighted_edges_from(w_edges)
+
+
+
+        '''
         # Define a grid for a particular altitude and safety margin around obstacles
         grid, north_offset, east_offset = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
         print("North offset = {0}, east offset = {1}".format(north_offset, east_offset))
         # Define starting point on the grid (this is just grid center)
         grid_start = (-north_offset, -east_offset)
         # TODO: convert start position to current position rather than map center
+        _start = (int(local_position[0] - north_offset), int(local_position[1] - east_offset))
+        grid_start = getClosestAllowedPoint(grid , _start)
+        '''
+
+        g_start, g_goal = find_start_goal_in_graph(G, start_ne, goal_ne)
+
+
         
         # Set goal as some arbitrary position on the grid
-        grid_goal = (-north_offset + 10, -east_offset + 10)
+        #grid_goal = (-north_offset + 10, -east_offset + 10)
         # TODO: adapt to set goal as latitude / longitude position and convert
+        #global_goal = ( -122.396989 , 37.790300 , 0)
+        #(-122.39745, 37.79248 , 0) global home
+        #global_goal = (-122.39740, 37.79200 , 0)
+        global_goal = (-122.398974, 37.794297, 0)
+        #global_goal = (-122.398804, 37.793377, 0)
+        local_goal = global_to_local(global_goal , self.global_home)
+        _goal = (int(local_goal[0] - north_offset), int(local_goal[1] - east_offset))
+        grid_goal = getClosestAllowedPoint(grid, _goal)
 
         # Run A* to find a path from start to goal
         # TODO: add diagonal motions with a cost of sqrt(2) to your A* implementation
         # or move to a different search space such as a graph (not done here)
         print('Local Start and Goal: ', grid_start, grid_goal)
-        path, _ = a_star(grid, heuristic, grid_start, grid_goal)
+        _path, _ = a_star(grid, heuristic, grid_start, grid_goal)
         # TODO: prune path to minimize number of waypoints
+        path = prune_path(_path)
         # TODO (if you're feeling ambitious): Try a different approach altogether!
 
         # Convert path to waypoints
