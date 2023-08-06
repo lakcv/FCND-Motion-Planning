@@ -10,9 +10,11 @@ from udacidrone import Drone
 from udacidrone.connection import MavlinkConnection
 from udacidrone.messaging import MsgID
 from udacidrone.frame_utils import global_to_local
+from graph_utils import create_grid_and_edges , a_star_graph, find_start_goal_in_graph
 
 import re
-
+import networkx as nx
+import numpy.linalg as LA
 
 class States(Enum):
     MANUAL = auto()
@@ -142,7 +144,19 @@ class MotionPlanning(Drone):
                                                                          self.local_position))
         # Read in obstacle map
         data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
-        
+
+        # I'll use a graph method
+        grid, edges = create_grid_and_edges(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+
+        # Create a graph with the weight of the edges
+        # set to the Euclidean distance between the points
+        w_edges = [(p1, p2, LA.norm(np.array(p2) - np.array(p1))) for p1, p2 in edges]
+        G = nx.Graph()
+        G.add_weighted_edges_from(w_edges)
+
+
+
+        '''
         # Define a grid for a particular altitude and safety margin around obstacles
         grid, north_offset, east_offset = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
         print("North offset = {0}, east offset = {1}".format(north_offset, east_offset))
@@ -151,6 +165,9 @@ class MotionPlanning(Drone):
         # TODO: convert start position to current position rather than map center
         _start = (int(local_position[0] - north_offset), int(local_position[1] - east_offset))
         grid_start = getClosestAllowedPoint(grid , _start)
+        '''
+
+        g_start, g_goal = find_start_goal_in_graph(G, start_ne, goal_ne)
 
 
         

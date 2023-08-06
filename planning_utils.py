@@ -1,6 +1,7 @@
 from enum import Enum
 from queue import PriorityQueue
 import numpy as np
+import networkx as nx
 
 
 def create_grid(data, drone_altitude, safety_distance):
@@ -209,3 +210,59 @@ def prune_path(path):
     else:
         pruned_path = path
     return pruned_path
+
+
+def a_star_graph(G, h, start_n, goal_n):
+    paths = []
+    path = []
+    path_cost = 0
+    queue = PriorityQueue()
+    queue.put((0, start_n))
+    visited = set(start_n)
+
+    branch = {}
+    found = False
+
+    while not queue.empty():
+        item = queue.get()
+        current_node = item[1]
+        if current_node == start_n:
+            current_cost = 0.0
+        else:
+            current_cost = branch[current_node][0]
+
+        if current_node == goal_n:
+            print('Found a path.')
+            found = True
+            break
+        else:
+            for next_node in G[current_node]:
+                w = G[current_node][next_node]['weight']
+                # get the tuple repre.values())[0]['weight']sentation
+                branch_cost = current_cost + G[current_node][next_node]['weight']
+                queue_cost = branch_cost + h(next_node, goal_n)
+
+                if next_node not in visited:
+                    visited.add(next_node)
+                    branch[next_node] = (branch_cost, current_node, next_node)
+                    queue.put((queue_cost, next_node))
+                else:
+                    if branch_cost < branch[next_node][0]:
+                        branch[next_node] = (branch_cost, current_node, next_node)
+                        queue.put((queue_cost, next_node))
+
+    if found:
+        # retrace steps
+        n = goal_n
+        path_cost = branch[n][0]
+        path.append(goal_n)
+        while branch[n][1] != start_n:
+            path.append(branch[n][1])
+            n = branch[n][1]
+        path.append(branch[n][1])
+
+    else:
+        print('**********************')
+        print('Failed to find a path!')
+        print('**********************')
+    return path[::-1], path_cost
