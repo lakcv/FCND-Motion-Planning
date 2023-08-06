@@ -55,6 +55,11 @@ class Action(Enum):
     EAST = (0, 1, 1)
     NORTH = (-1, 0, 1)
     SOUTH = (1, 0, 1)
+    # Extend Actions
+    UP_LEFT = (-1, -1, (2) ** 0.5)
+    UP_RIGHT = (-1, 1, (2) ** 0.5)
+    DOWN_LEFT = (1, -1, (2) ** 0.5)
+    DOWN_RIGHT = (1, 1, (2) ** 0.5)
 
     @property
     def cost(self):
@@ -84,6 +89,15 @@ def valid_actions(grid, current_node):
         valid_actions.remove(Action.WEST)
     if y + 1 > m or grid[x, y + 1] == 1:
         valid_actions.remove(Action.EAST)
+
+    if x - 1 < 0 or y - 1 < 0 or grid[x-1, y-1] == 1:
+        valid_actions.remove(Action.UP_LEFT)
+    if x + 1 > n or y + 1 > m or grid[x+1, y+1] == 1:
+        valid_actions.remove(Action.DOWN_RIGHT)
+    if x + 1 > n or y - 1 < 0 or grid[x+1, y-1] == 1:
+        valid_actions.remove(Action.DOWN_LEFT)
+    if x - 1 < 0 or y + 1 > m or grid[x-1, y+1] == 1:
+        valid_actions.remove(Action.UP_RIGHT)
 
     return valid_actions
 
@@ -144,3 +158,54 @@ def a_star(grid, h, start, goal):
 def heuristic(position, goal_position):
     return np.linalg.norm(np.array(position) - np.array(goal_position))
 
+def getClosestAllowedPoint(grid , local_point):
+    if not grid[local_point]:
+        return local_point
+
+    N , E = grid.shape
+    for i in range(1,max(grid.shape)):
+        n_min = max(0,local_point[0]-i)
+        e_min = max(0,local_point[1]-i)
+        n_max = min(N, local_point[0] + i)
+        e_max = min(E, local_point[1] + i)
+
+        itemindex = np.where(0 == grid[n_min ,  e_min:e_max])
+        if len(itemindex[0]):
+            return (n_min , e_min+itemindex[0][0])
+
+        itemindex = np.where(0 == grid[n_max-1, e_min:e_max])
+        if len(itemindex[0]):
+            return (n_max-1 , e_min+itemindex[0][0])
+
+        itemindex = np.where(0 == grid[n_min:n_max, e_min])
+        if len(itemindex[0]):
+            return (n_min+itemindex[0][0] , e_min )
+
+        itemindex = np.where(0 == grid[n_min:n_max, e_max-1])
+        if len(itemindex[0]):
+            return (n_min+itemindex[0][0] , e_max-1 )
+
+    return []
+
+def prune_path(path):
+    def point(p):
+        return np.array([p[0], p[1], 1.]).reshape(1, -1)
+    def collinearity_check(p1, p2, p3, epsilon=0.1):
+        m = np.concatenate((p1, p2, p3), 0)
+        det = np.linalg.det(m)
+        return abs(det) < epsilon
+
+    if path is not None:
+        pruned_path = [p for p in path]
+        # TODO: prune the path!
+        if len(pruned_path) >=3:
+            redundant_points = [False]
+            for i in range(1,len(pruned_path)-2):
+                redundant_points.append(collinearity_check(point(path[i-1]),point(path[i]),point(path[i+1])))
+            redundant_points.append(False)
+        else:
+            return path
+        pruned_path = [ p for p,redundant in zip(pruned_path,redundant_points) if not redundant]
+    else:
+        pruned_path = path
+    return pruned_path
