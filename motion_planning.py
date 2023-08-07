@@ -167,7 +167,6 @@ class MotionPlanning(Drone):
         grid_start = getClosestAllowedPoint(grid , _start)
         '''
 
-        g_start, g_goal = find_start_goal_in_graph(G, start_ne, goal_ne)
 
 
         
@@ -180,9 +179,16 @@ class MotionPlanning(Drone):
         global_goal = (-122.398974, 37.794297, 0)
         #global_goal = (-122.398804, 37.793377, 0)
         local_goal = global_to_local(global_goal , self.global_home)
+        '''
         _goal = (int(local_goal[0] - north_offset), int(local_goal[1] - east_offset))
-        grid_goal = getClosestAllowedPoint(grid, _goal)
+        grid_goal = getClosestAllowedPoint(grid, _goal)'''
 
+        _start = (int(local_position[0]), int(local_position[1]))
+        _goal = (int(local_goal[0]), int(local_goal[1]))
+        '''
+        g_start, g_goal = find_start_goal_in_graph(G, _start, _goal)
+
+        
         # Run A* to find a path from start to goal
         # TODO: add diagonal motions with a cost of sqrt(2) to your A* implementation
         # or move to a different search space such as a graph (not done here)
@@ -191,6 +197,7 @@ class MotionPlanning(Drone):
         # TODO: prune path to minimize number of waypoints
         path = prune_path(_path)
         # TODO (if you're feeling ambitious): Try a different approach altogether!
+        '''
 
         # Convert path to waypoints
         waypoints = [[p[0] + north_offset, p[1] + east_offset, TARGET_ALTITUDE, 0] for p in path]
