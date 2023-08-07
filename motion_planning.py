@@ -199,6 +199,10 @@ class MotionPlanning(Drone):
         # TODO (if you're feeling ambitious): Try a different approach altogether!
         '''
 
+        node_start, node_goal = find_start_goal_in_graph(G,_start,_goal)
+
+        path , _ = a_star_graph(G, heuristic, node_start, node_goal)
+
         # Convert path to waypoints
         waypoints = [[p[0] + north_offset, p[1] + east_offset, TARGET_ALTITUDE, 0] for p in path]
         # Set self.waypoints
