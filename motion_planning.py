@@ -10,7 +10,7 @@ from udacidrone import Drone
 from udacidrone.connection import MavlinkConnection
 from udacidrone.messaging import MsgID
 from udacidrone.frame_utils import global_to_local
-from graph_utils import create_grid_and_edges , a_star_graph, find_start_goal_in_graph
+from graph_utils import prepare_graph , create_grid_and_edges , a_star_graph, find_start_goal_in_graph
 
 import re
 import networkx as nx
@@ -26,9 +26,9 @@ class States(Enum):
     PLANNING = auto()
 
 
-class MotionPlanning(Drone):
+class MotionPlanning(Drone  ):
 
-    def __init__(self, connection):
+    def __init__(self, connection , data, grid, G, north_offset, east_offset):
         super().__init__(connection)
 
         self.target_position = np.array([0.0, 0.0, 0.0])
@@ -43,6 +43,13 @@ class MotionPlanning(Drone):
         self.register_callback(MsgID.LOCAL_POSITION, self.local_position_callback)
         self.register_callback(MsgID.LOCAL_VELOCITY, self.velocity_callback)
         self.register_callback(MsgID.STATE, self.state_callback)
+        TARGET_ALTITUDE = 5
+        SAFETY_DISTANCE = 5
+        self.data = data
+        self.grid = grid
+        self.G = G
+        self.north_offset = north_offset
+        self.east_offset = east_offset
 
     def local_position_callback(self):
         if self.flight_state == States.TAKEOFF:
@@ -84,7 +91,8 @@ class MotionPlanning(Drone):
     def takeoff_transition(self):
         self.flight_state = States.TAKEOFF
         print("takeoff transition")
-        self.takeoff(self.target_position[2])
+        #self.takeoff(self.target_position[2])
+        self.takeoff(6.0)
 
     def waypoint_transition(self):
         self.flight_state = States.WAYPOINT
@@ -142,18 +150,21 @@ class MotionPlanning(Drone):
         
         print('global home {0}, position {1}, local position {2}'.format(self.global_home, self.global_position,
                                                                          self.local_position))
+
+        ''' Move the below code at very beginning , since it takes a lot of time to prepare edges , 
+            that in turn brakes the connection
         # Read in obstacle map
         data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
 
         # I'll use a graph method
-        grid, edges = create_grid_and_edges(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+        grid, edges , north_offset, east_offset= create_grid_and_edges(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
 
         # Create a graph with the weight of the edges
         # set to the Euclidean distance between the points
         w_edges = [(p1, p2, LA.norm(np.array(p2) - np.array(p1))) for p1, p2 in edges]
         G = nx.Graph()
         G.add_weighted_edges_from(w_edges)
-
+        '''
 
 
         '''
@@ -183,8 +194,8 @@ class MotionPlanning(Drone):
         _goal = (int(local_goal[0] - north_offset), int(local_goal[1] - east_offset))
         grid_goal = getClosestAllowedPoint(grid, _goal)'''
 
-        _start = (int(local_position[0]), int(local_position[1]))
-        _goal = (int(local_goal[0]), int(local_goal[1]))
+        _start = (int(local_position[0]) - self.north_offset , int(local_position[1])-self.east_offset)
+        _goal = (int(local_goal[0]) - self.north_offset, int(local_goal[1])-self.east_offset)
         '''
         g_start, g_goal = find_start_goal_in_graph(G, _start, _goal)
 
@@ -199,12 +210,12 @@ class MotionPlanning(Drone):
         # TODO (if you're feeling ambitious): Try a different approach altogether!
         '''
 
-        node_start, node_goal = find_start_goal_in_graph(G,_start,_goal)
+        node_start, node_goal = find_start_goal_in_graph(self.G,_start,_goal)
 
-        path , _ = a_star_graph(G, heuristic, node_start, node_goal)
+        path , _ = a_star_graph(self.G, heuristic, node_start, node_goal)
 
         # Convert path to waypoints
-        waypoints = [[p[0] + north_offset, p[1] + east_offset, TARGET_ALTITUDE, 0] for p in path]
+        waypoints = [[p[0] + self.north_offset, p[1] + self.east_offset, TARGET_ALTITUDE, 0] for p in path]
         # Set self.waypoints
         self.waypoints = waypoints
         # TODO: send waypoints to sim (this is just for visualization of waypoints)
@@ -222,15 +233,16 @@ class MotionPlanning(Drone):
 
         self.stop_log()
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=5760, help='Port number')
     parser.add_argument('--host', type=str, default='127.0.0.1', help="host address, i.e. '127.0.0.1'")
     args = parser.parse_args()
-
+    TARGET_ALTITUDE = 5
+    SAFETY_DISTANCE = 5
+    data, grid, G, north_offset, east_offset = prepare_graph( 'colliders.csv', TARGET_ALTITUDE , SAFETY_DISTANCE)
     conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=60)
-    drone = MotionPlanning(conn)
+    drone = MotionPlanning(conn,data, grid, G, north_offset, east_offset)
     time.sleep(1)
 
     drone.start()

@@ -5,6 +5,9 @@ import numpy as np
 from scipy.spatial import Voronoi
 from bresenham import bresenham
 
+import networkx as nx
+import numpy.linalg as LA
+
 def create_grid_and_edges(data, drone_altitude, safety_distance):
     """
     Returns a grid representation of a 2D configuration space
@@ -74,7 +77,7 @@ def create_grid_and_edges(data, drone_altitude, safety_distance):
             p2 = (p2[0], p2[1])
             edges.append((p1, p2))
 
-    return grid, edges
+    return grid, edges , int(north_min), int(east_min)
 def a_star_graph(G, h, start_n, goal_n):
     paths = []
     path = []
@@ -145,3 +148,18 @@ def find_start_goal_in_graph(G, start, goal):
     idx = np.argmin([((goal[0] - x) ** 2 + (goal[1] - y) ** 2) for x, y in G.nodes])
     node_goal = list(G.nodes)[idx]
     return node_start, node_goal
+
+def prepare_graph(file_name_str , TARGET_ALTITUDE , SAFETY_DISTANCE):
+    # Read in obstacle map
+    data = np.loadtxt(file_name_str, delimiter=',', dtype='Float64', skiprows=2)
+
+    # I'll use a graph method
+    grid, edges, north_offset, east_offset = create_grid_and_edges(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+
+    # Create a graph with the weight of the edges
+    # set to the Euclidean distance between the points
+    w_edges = [(p1, p2, LA.norm(np.array(p2) - np.array(p1))) for p1, p2 in edges]
+    G = nx.Graph()
+    G.add_weighted_edges_from(w_edges)
+
+    return data ,grid , G, north_offset, east_offset
