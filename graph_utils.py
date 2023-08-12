@@ -8,6 +8,8 @@ from bresenham import bresenham
 import networkx as nx
 import numpy.linalg as LA
 
+
+
 def create_grid_and_edges(data, drone_altitude, safety_distance):
     """
     Returns a grid representation of a 2D configuration space
@@ -77,7 +79,24 @@ def create_grid_and_edges(data, drone_altitude, safety_distance):
             p2 = (p2[0], p2[1])
             edges.append((p1, p2))
 
-    return grid, edges , int(north_min), int(east_min)
+    return grid, edges, int(north_min), int(east_min)
+
+
+def prepare_graph(file_name_str, TARGET_ALTITUDE, SAFETY_DISTANCE):
+    # Read in obstacle map
+    data = np.loadtxt(file_name_str, delimiter=',', dtype='Float64', skiprows=2)
+
+    # I'll use a graph method
+    grid, edges, north_offset, east_offset = create_grid_and_edges(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+
+    # Create a graph with the weight of the edges
+    # set to the Euclidean distance between the points
+    w_edges = [(p1, p2, LA.norm(np.array(p2) - np.array(p1))) for p1, p2 in edges]
+    G = nx.Graph()
+    G.add_weighted_edges_from(w_edges)
+
+    return data, grid, G, north_offset, east_offset
+
 def a_star_graph(G, h, start_n, goal_n):
     paths = []
     path = []
@@ -136,11 +155,6 @@ def a_star_graph(G, h, start_n, goal_n):
 
 def find_start_goal_in_graph(G, start, goal):
     # TODO: find start and goal on skeleton
-    # Some useful functions might be:
-    # np.nonzero()
-    # np.transpose()
-    # np.linalg.norm()
-    # np.argmin()
 
     idx = np.argmin([((start[0] - x) ** 2 + (start[1] - y) ** 2) for x, y in G.nodes])
     node_start = list(G.nodes)[idx]
@@ -149,17 +163,37 @@ def find_start_goal_in_graph(G, start, goal):
     node_goal = list(G.nodes)[idx]
     return node_start, node_goal
 
-def prepare_graph(file_name_str , TARGET_ALTITUDE , SAFETY_DISTANCE):
-    # Read in obstacle map
-    data = np.loadtxt(file_name_str, delimiter=',', dtype='Float64', skiprows=2)
 
-    # I'll use a graph method
-    grid, edges, north_offset, east_offset = create_grid_and_edges(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
 
-    # Create a graph with the weight of the edges
-    # set to the Euclidean distance between the points
-    w_edges = [(p1, p2, LA.norm(np.array(p2) - np.array(p1))) for p1, p2 in edges]
-    G = nx.Graph()
-    G.add_weighted_edges_from(w_edges)
 
-    return data ,grid , G, north_offset, east_offset
+
+def path_pruning(grid, waypoints, north_offset, east_offset):
+    if len(waypoints) < 3:
+        return waypoints
+
+    waypoints_rest = waypoints[1:]
+    remain_waypoints = []
+    for p in waypoints_rest[-1:0:-1]:
+        remain_waypoints.insert(0, p)
+        if not is_hit(grid, waypoints[0], p,north_offset ,east_offset):
+            pruned_path = [waypoints[0]] + path_pruning(grid, remain_waypoints, north_offset, east_offset)
+            return pruned_path
+    pruned_path = [waypoints[0]] + path_pruning(grid, waypoints[1:], north_offset, east_offset)
+    return pruned_path
+
+
+def is_hit(grid, p1, p2, north_offset ,east_offset):
+    cells = list(bresenham(int(p1[0]-north_offset), int(p1[1]-east_offset), int(p2[0]-north_offset), int(p2[1]-east_offset)))
+    hit = False
+
+    for c in cells:
+        # First check if we're off the map
+        if np.amin(c) < 0 or c[0] >= grid.shape[0] or c[1] >= grid.shape[1]:
+            hit = True
+            break
+        # Next check if we're in collision
+        if grid[c[0], c[1]] == 1:
+            hit = True
+            break
+
+    return hit
